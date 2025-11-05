@@ -274,6 +274,7 @@ class OpenAIServingResponses(OpenAIServing):
 
         fbvscode.set_trace()
         error_check_ret = await self._check_model(request)
+        import fbvscode; fbvscode.set_trace()
         if error_check_ret is not None:
             logger.error("Error with model %s", error_check_ret)
             return error_check_ret
@@ -373,6 +374,7 @@ class OpenAIServingResponses(OpenAIServing):
 
                 context: ConversationContext
                 if self.use_harmony:
+                    # note: in harmomy, the system message is included
                     if request.stream:
                         context = StreamingHarmonyContext(messages, available_tools)
                     else:
@@ -382,6 +384,7 @@ class OpenAIServingResponses(OpenAIServing):
                         # This is an feature in development for parsing tokens during generation
                         # instead of at the end
                         context = ParsableContext(
+                            sentences=messages,
                             tokenizer=tokenizer,
                             reasoning_parser=self.reasoning_parser,
                         )
