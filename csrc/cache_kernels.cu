@@ -966,22 +966,26 @@ __global__ void gather_and_maybe_dequant_cache(
   };
 
   for (int pid = split_start; pid < full_blocks_end; ++pid) {
-    auto block_id = batch_block_table[pid];
-    auto block_start_ptr = src_cache + block_id * cache_block_stride;
-    auto block_dst_ptr = dst + pid * block_size * dst_entry_stride;
-    for (int eid = 0; eid < block_size; ++eid) {
-      copy_entry(block_start_ptr + eid * cache_entry_stride,
+    if (offset + pid < block_table_stride){
+       auto block_id = batch_block_table[pid];
+       auto block_start_ptr = src_cache + block_id * cache_block_stride;
+       auto block_dst_ptr = dst + pid * block_size * dst_entry_stride;
+       for (int eid = 0; eid < block_size; ++eid) {
+        copy_entry(block_start_ptr + eid * cache_entry_stride,
                  block_dst_ptr + eid * dst_entry_stride);
+       }
     }
   }
 
   if (partial_block_size) {
-    auto block_id = batch_block_table[full_blocks_end];
-    auto block_start_ptr = src_cache + block_id * cache_block_stride;
-    auto block_dst_ptr = dst + full_blocks_end * block_size * dst_entry_stride;
-    for (int eid = 0; eid < partial_block_size; ++eid) {
+    if (offset + full_blocks_end < block_table_stride) {
+      auto block_id = batch_block_table[full_blocks_end];
+      auto block_start_ptr = src_cache + block_id * cache_block_stride;
+      auto block_dst_ptr = dst + full_blocks_end * block_size * dst_entry_stride;
+      for (int eid = 0; eid < partial_block_size; ++eid) {
       copy_entry(block_start_ptr + eid * cache_entry_stride,
                  block_dst_ptr + eid * dst_entry_stride);
+      }
     }
   }
 }
