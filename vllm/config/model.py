@@ -33,7 +33,12 @@ from vllm.transformers_utils.config import (
     try_get_generation_config,
     try_get_safetensors_metadata,
     try_get_tokenizer_config,
+    uses_custom_attention_masks,
     uses_mrope,
+)
+from vllm.transformers_utils.gguf_utils import (
+    detect_gguf_multimodal,
+    maybe_patch_hf_config_from_gguf,
 )
 from vllm.transformers_utils.runai_utils import ObjectStorageModel, is_runai_obj_uri
 from vllm.transformers_utils.utils import maybe_model_redirect
@@ -64,6 +69,7 @@ else:
     LogitsProcessor = Any
 
 logger = init_logger(__name__)
+
 
 RunnerOption = Literal["auto", RunnerType]
 ConvertType = Literal["none", "embed", "classify", "reward"]
@@ -508,6 +514,10 @@ class ModelConfig:
             hf_overrides_kw=hf_overrides_kw,
             hf_overrides_fn=hf_overrides_fn,
         )
+        hf_config = maybe_patch_hf_config_from_gguf(
+            self.model,
+            hf_config,
+        )
 
         self.hf_config = hf_config
         if dict_overrides:
@@ -523,6 +533,7 @@ class ModelConfig:
 
         architectures = self.architectures
         registry = self.registry
+
         is_generative_model = registry.is_text_generation_model(architectures, self)
         is_pooling_model = registry.is_pooling_model(architectures, self)
 
@@ -668,8 +679,24 @@ class ModelConfig:
 
         self.original_max_model_len = self.max_model_len
         self.max_model_len = self.get_and_verify_max_len(self.max_model_len)
+
+        # GGUF multimodal: Set flag to initialize multimodal_config
+        # when Gemma3 mmproj file is present
+        is_gguf_multimodal = False
+        if detect_gguf_multimodal(self.model):
+            is_gemma3 = any(
+                "gemma3" in str(arch).lower() for arch in self.architectures
+            )
+            if is_gemma3:
+                is_gguf_multimodal = True
+                logger.info(
+                    "Detected Gemma3 GGUF multimodal model "
+                    "with mmproj.gguf, initializing "
+                    "multimodal_config"
+                )
+
         # Init multimodal config if needed
-        if self._model_info.supports_multimodal:
+        if self._model_info.supports_multimodal or is_gguf_multimodal:
             if (
                 mm_encoder_tp_mode == "data"
                 and not self._model_info.supports_multimodal_encoder_tp_data
@@ -1604,6 +1631,10 @@ class ModelConfig:
     @property
     def uses_mrope(self) -> bool:
         return uses_mrope(self.hf_config)
+
+    @property
+    def uses_custom_attention_masks(self) -> bool:
+        return uses_custom_attention_masks(self.hf_config)
 
     @property
     def is_multimodal_model(self) -> bool:
