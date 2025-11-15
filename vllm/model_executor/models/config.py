@@ -46,8 +46,7 @@ class GteNewModelConfig(VerifyAndUpdateConfig):
             "head_size": head_dim,
             "rotary_dim": getattr(config, "rotary_emb_dim", head_dim),
             "max_position": config.max_position_embeddings,
-            "base": config.rope_theta,
-            "rope_scaling": getattr(config, "rope_scaling", None),
+            "rope_parameters": config.rope_parameters,
         }
 
 
@@ -78,12 +77,16 @@ class JinaRobertaModelConfig(VerifyAndUpdateConfig):
             if not model_config.enforce_eager:
                 max_position = round_up(max_position, 8)
 
+            if getattr(config, "rope_parameters", None) is None:
+                config.rope_parameters = {"rope_type": "default"}
+            if "rope_theta" not in config.rope_parameters:
+                config.rope_parameters["rope_theta"] = config.rotary_emb_base
+
             config.rotary_kwargs = {
                 "head_size": head_dim,
                 "rotary_dim": getattr(config, "rotary_emb_dim", head_dim),
                 "max_position": max_position,
-                "base": getattr(config, "rope_theta", config.rotary_emb_base),
-                "rope_scaling": getattr(config, "rope_scaling", None),
+                "rope_parameters": config.rope_parameters,
             }
 
 
@@ -117,18 +120,23 @@ class NomicBertModelConfig(VerifyAndUpdateConfig):
         head_dim = config.hidden_size // config.num_attention_heads
         rotary_emb_dim = int(head_dim * config.rotary_emb_fraction)
         max_trained_positions = getattr(config, "max_trained_positions", 2048)
+
+        if getattr(config, "rope_parameters", None) is None:
+            config.rope_parameters = {"rope_type": "default"}
+        if "rope_theta" not in config.rope_parameters:
+            config.rope_parameters["rope_theta"] = config.rotary_emb_base
+
         config.rotary_kwargs = {
             "head_size": head_dim,
             "rotary_dim": rotary_emb_dim,
             "max_position": max_trained_positions,
-            "base": getattr(config, "rope_theta", config.rotary_emb_base),
-            "rope_scaling": getattr(config, "rope_scaling", None),
+            "rope_parameters": config.rope_parameters,
         }
 
         # we ignore config.rotary_scaling_factor so that for datasets shorter
         # than max_trained_positions 2048, the results are consistent
         # with SentenceTransformer.
-        # The context extension uses vllm style rope_theta and rope_scaling.
+        # The context extension uses vllm style rope_theta and rope_parameters.
         # See #17785 #18755
         if (
             not vllm_config.model_config.hf_overrides
@@ -172,7 +180,7 @@ class NomicBertModelConfig(VerifyAndUpdateConfig):
             if hasattr(hf_text_config, "max_model_len"):
                 delattr(hf_text_config, "max_model_len")
             hf_text_config.max_position_embeddings = max_trained_positions
-            hf_text_config.rope_scaling = config.rotary_kwargs["rope_scaling"]
+            hf_text_config.rope_parameters = config.rotary_kwargs["rope_parameters"]
 
             # The priority of sentence_bert_config.json is higher
             # than max_position_embeddings
@@ -246,8 +254,7 @@ class SnowflakeGteNewModelConfig(VerifyAndUpdateConfig):
             "head_size": head_dim,
             "rotary_dim": getattr(config, "rotary_emb_dim", head_dim),
             "max_position": config.max_position_embeddings,
-            "base": config.rope_theta,
-            "rope_scaling": getattr(config, "rope_scaling", None),
+            "rope_parameters": config.rope_parameters,
         }
 
 
