@@ -818,6 +818,16 @@ def apply_text_matches(
     return "".join(texts), result
 
 
+def _all_placeholders_found(
+    mm_item_counts: dict[str, int],
+    item_idx_by_modality: dict[str, int],
+) -> bool:
+    return all(
+        item_idx >= mm_item_counts[modality]
+        for modality, item_idx in item_idx_by_modality.items()
+    )
+
+
 def _iter_placeholders(
     prompt: list[int],
     mm_prompt_updates: "MultiModalPromptUpdates",
@@ -832,12 +842,15 @@ def _iter_placeholders(
 
     Note that empty matches are ignored.
     """
-    prompt_len = len(prompt)
     mm_item_counts = {m: len(items) for m, items in mm_prompt_updates.items()}
+    item_idx_by_modality = {modality: 0 for modality in mm_prompt_updates}
 
-    item_idx_by_modality = defaultdict[str, int](lambda: 0)
+    if _all_placeholders_found(mm_item_counts, item_idx_by_modality):
+        return
 
+    prompt_len = len(prompt)
     start_idx = 0
+
     while start_idx < prompt_len:
         found = False
 
@@ -875,6 +888,9 @@ def _iter_placeholders(
                     break
 
             if found:
+                if _all_placeholders_found(mm_item_counts, item_idx_by_modality):
+                    return
+
                 break  # Go back to the outer while loop
 
         if not found:
