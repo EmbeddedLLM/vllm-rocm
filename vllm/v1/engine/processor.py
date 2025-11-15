@@ -5,6 +5,8 @@ import time
 from collections.abc import Mapping
 from typing import Any, Literal, cast
 
+import torch
+
 from vllm.config import VllmConfig
 from vllm.inputs import ProcessorInputs, PromptType, SingletonInputs
 from vllm.inputs.parse import split_enc_dec_inputs
@@ -20,6 +22,7 @@ from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import SamplingParams
 from vllm.transformers_utils.tokenizer import AnyTokenizer
 from vllm.utils import length_from_prompt_token_ids_or_embeds
+from vllm.utils.collection_utils import is_list_of
 from vllm.v1.engine import EngineCoreRequest
 from vllm.v1.metrics.stats import MultiModalCacheStats
 from vllm.v1.structured_output.backend_guidance import validate_guidance_grammar
@@ -340,9 +343,18 @@ class Processor:
 
         mm_uuids: dict[str, list[str | None] | str] = {}
         for modality, data in mm_data.items():
-            n = len(data) if isinstance(data, list) else 1
+            # Hash each item for embedding inputs.
+            n = len(data) if isinstance(data, list) or self._is_embeddings(data) else 1
             mm_uuids[modality] = [f"{request_id}-{modality}-{i}" for i in range(n)]
         return mm_uuids
+
+    def _is_embeddings(self, data: object) -> bool:
+        if isinstance(data, torch.Tensor):
+            return data.ndim == 3
+        if is_list_of(data, torch.Tensor):
+            return data[0].ndim == 2  # type: ignore[index]
+
+        return False
 
     def process_inputs(
         self,
