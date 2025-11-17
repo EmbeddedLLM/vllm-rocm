@@ -6,13 +6,18 @@
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
         code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
         pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .info { background: #e7f3ff; padding: 10px; border-left: 4px solid #2196F3; margin: 15px 0; }
     </style>
 </head>
 <body>
     <h1>vLLM ROCm PyPI Repository</h1>
     <p>This is a custom PyPI repository for vLLM with ROCm support and all dependencies.</p>
+    <div class="info">
+        <strong>📦 Hybrid Storage:</strong> Small wheels (&lt;100MB) are hosted on GitHub Pages,
+        while large wheels (PyTorch, Triton) are hosted on GitHub Releases for better performance.
+    </div>
     <h2>Installation</h2>
-    <pre><code>pip install vllm-rocm --index-url https://embeddedllm.github.io/vllm-rocm/simple/</code></pre>
+    <pre><code>pip install vllm-rocm --index-url https://EmbeddedLLM.github.io/vllm-rocm/simple/</code></pre>
     <h2>Available Packages</h2>
     <p><a href="simple/">Browse packages</a></p>
     <h2>Build Information</h2>
@@ -20,8 +25,14 @@
         <li>ROCm Version: 7.1</li>
         <li>Python Version: 3.12</li>
         <li>GPU Architectures: gfx942</li>
-        <li>Built: $(date -u +"%Y-%m-%d %H:%M:%S UTC")</li>
-        <li>Commit: 3a05d781629a049f325345d675b908f938b588c9</li>
+        <li>Built: 2025-11-17 08:23:58 UTC</li>
+        <li>Commit: 508c45a35cbe0626fe07b33634d16063ff52646f</li>
+        <li>Release Tag: wheels-20251117-082320</li>
+    </ul>
+    <h2>Resources</h2>
+    <ul>
+        <li><a href="https://github.com/EmbeddedLLM/vllm-rocm">Source Repository</a></li>
+        <li><a href="https://github.com/EmbeddedLLM/vllm-rocm/releases/tag/wheels-20251117-082320">Latest Release</a></li>
     </ul>
 </body>
 </html>
