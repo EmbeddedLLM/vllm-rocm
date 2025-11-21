@@ -359,7 +359,7 @@ jobs:
             --packages-url "$PAGES_URL/packages" \
             --output-dir simple
 
-          echo "✅ Base index generated for small wheels"
+          echo "[OK] Base index generated for small wheels"
           echo "Packages indexed:"
           ls -1 simple/ | grep -v index.html | head -20
 
@@ -374,20 +374,7 @@ jobs:
               wheel_name=$(basename "$wheel")
 
               # Use Python to properly extract package name (more robust than sed)
-              pkg_name=$(python3 << PYTHON_EOF
-import sys
-from pathlib import Path
-from packaging.utils import parse_wheel_filename
-
-try:
-    name, version, build, tags = parse_wheel_filename("$wheel_name")
-    # Normalize package name per PEP 503
-    print(name.lower().replace('_', '-').replace('.', '-'))
-except Exception as e:
-    # Fallback to simple parsing
-    print("$wheel_name".split('-')[0].lower().replace('_', '-'))
-PYTHON_EOF
-)
+              pkg_name=$(python3 .github/scripts/extract_package_name.py "$wheel_name")
 
               mkdir -p "simple/$pkg_name"
 
@@ -401,16 +388,16 @@ PYTHON_EOF
                 echo "  Added $pkg_name (large) to existing index"
               else
                 # Create new index for large wheel only packages
-                cat > "simple/$pkg_name/index.html" << EOF
-<!DOCTYPE html>
-<html>
-<head><title>Links for $pkg_name</title></head>
-<body>
-<h1>Links for $pkg_name</h1>
-<a href="$wheel_url">$wheel_name</a><br/>
-</body>
-</html>
-EOF
+                {
+                  echo "<!DOCTYPE html>"
+                  echo "<html>"
+                  echo "<head><title>Links for $pkg_name</title></head>"
+                  echo "<body>"
+                  echo "<h1>Links for $pkg_name</h1>"
+                  echo "<a href=\"$wheel_url\">$wheel_name</a><br/>"
+                  echo "</body>"
+                  echo "</html>"
+                } > "simple/$pkg_name/index.html"
                 echo "  Created new index for $pkg_name (large)"
               fi
 
@@ -420,7 +407,7 @@ EOF
               fi
             done
 
-            echo "✅ Large wheels added to index"
+            echo "[OK] Large wheels added to index"
           else
             echo "No large wheels to add"
           fi
@@ -432,7 +419,7 @@ EOF
           mv packages-small packages
           rm -rf packages-large
 
-          echo "✅ PyPI index structure created"
+          echo "[OK] PyPI index structure created"
           echo ""
           echo "Index summary:"
           echo "  Total packages: $(ls -1 simple/ | grep -v index.html | wc -l)"
@@ -474,9 +461,9 @@ EOF
 
             if [ -d "simple/$normalized_pkg" ] && [ -f "simple/$normalized_pkg/index.html" ]; then
               wheel_count=$(grep -c "<a href=" "simple/$normalized_pkg/index.html" || echo 0)
-              echo "✅ $pkg ($normalized_pkg): $wheel_count wheels"
+              echo "[OK] $pkg ($normalized_pkg): $wheel_count wheels"
             else
-              echo "❌ $pkg ($normalized_pkg): NOT FOUND"
+              echo "[ERROR] $pkg ($normalized_pkg): NOT FOUND"
               MISSING_PACKAGES+=("$pkg")
             fi
           done
@@ -497,7 +484,7 @@ EOF
             exit 1
           fi
 
-          echo "✅ All critical packages present in index"
+          echo "[OK] All critical packages present in index"
           echo ""
           echo "Sample package indices:"
           for pkg in regex numpy vllm; do
@@ -514,7 +501,7 @@ EOF
           cd pypi-repo
           PAGES_URL="https://${{ github.repository_owner }}.github.io/vllm-rocm"
           RELEASE_TAG="${{ steps.separate_wheels.outputs.release_tag }}"
-          cat > index.html << EOF
+          cat > index.html <<EOF
           <!DOCTYPE html>
           <html>
           <head>
