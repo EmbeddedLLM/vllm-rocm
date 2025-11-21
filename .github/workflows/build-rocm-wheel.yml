@@ -341,7 +341,7 @@ jobs:
             --repo ${{ github.repository }} \
             --clobber
 
-      - name: Generate custom PyPI index with mixed URLs
+      - name: Generate PyPI index with dumb-pypi
         run: |
           cd pypi-repo
 
@@ -349,51 +349,166 @@ jobs:
           RELEASE_TAG="${{ steps.separate_wheels.outputs.release_tag }}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}"
 
-          # Create simple directory structure
-          mkdir -p simple
+          echo "Generating PEP 503 compliant PyPI index..."
 
-          # Generate index for each package
-          for wheel in packages-small/*.whl packages-large/*.whl; do
-            [ -f "$wheel" ] || continue
+          # Step 1: Use dumb-pypi to generate base index for small wheels
+          # This creates proper PEP 503 compliant structure
+          echo "Step 1: Running dumb-pypi for small wheels..."
+          dumb-pypi \
+            --package-list packages-small \
+            --packages-url "$PAGES_URL/packages" \
+            --output-dir simple
 
-            # Extract package name (convert underscores/hyphens to lowercase, remove version)
-            wheel_name=$(basename "$wheel")
-            pkg_name=$(echo "$wheel_name" | sed -E 's/(-|_)[0-9].*//' | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+          echo "✅ Base index generated for small wheels"
+          echo "Packages indexed:"
+          ls -1 simple/ | grep -v index.html | head -20
 
-            mkdir -p "simple/$pkg_name"
+          # Step 2: Augment index with large wheels from GitHub Releases
+          if [ -d "packages-large" ] && [ "$(ls -A packages-large/*.whl 2>/dev/null)" ]; then
+            echo ""
+            echo "Step 2: Adding large wheels to index..."
 
-            # Determine URL based on size
-            if [ -f "packages-large/$(basename $wheel)" ]; then
-              wheel_url="$RELEASE_URL/$(basename $wheel)"
-            else
-              wheel_url="$PAGES_URL/packages/$(basename $wheel)"
-            fi
+            for wheel in packages-large/*.whl; do
+              [ -f "$wheel" ] || continue
 
-            # Create/append to package index
-            echo "<a href=\"$wheel_url\">$(basename $wheel)</a><br/>" >> "simple/$pkg_name/index.html"
-          done
+              wheel_name=$(basename "$wheel")
 
-          # Create main simple index
-          cat > simple/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html><head><title>Simple Index</title></head><body>
-          EOF
+              # Use Python to properly extract package name (more robust than sed)
+              pkg_name=$(python3 << PYTHON_EOF
+import sys
+from pathlib import Path
+from packaging.utils import parse_wheel_filename
 
-          for pkg_dir in simple/*/; do
-            [ -d "$pkg_dir" ] || continue
-            pkg_name=$(basename "$pkg_dir")
-            echo "<a href=\"$pkg_name/\">$pkg_name</a><br/>" >> simple/index.html
-          done
+try:
+    name, version, build, tags = parse_wheel_filename("$wheel_name")
+    # Normalize package name per PEP 503
+    print(name.lower().replace('_', '-').replace('.', '-'))
+except Exception as e:
+    # Fallback to simple parsing
+    print("$wheel_name".split('-')[0].lower().replace('_', '-'))
+PYTHON_EOF
+)
 
-          echo "</body></html>" >> simple/index.html
+              mkdir -p "simple/$pkg_name"
 
-          # Move small wheels to packages directory for Pages
+              # Append to existing index or create new one
+              wheel_url="$RELEASE_URL/$wheel_name"
+
+              # Check if index exists (from dumb-pypi)
+              if [ -f "simple/$pkg_name/index.html" ]; then
+                # Append to existing index (before closing tags)
+                sed -i "s|</body>|<a href=\"$wheel_url\">$wheel_name</a><br/>\n</body>|" "simple/$pkg_name/index.html"
+                echo "  Added $pkg_name (large) to existing index"
+              else
+                # Create new index for large wheel only packages
+                cat > "simple/$pkg_name/index.html" << EOF
+<!DOCTYPE html>
+<html>
+<head><title>Links for $pkg_name</title></head>
+<body>
+<h1>Links for $pkg_name</h1>
+<a href="$wheel_url">$wheel_name</a><br/>
+</body>
+</html>
+EOF
+                echo "  Created new index for $pkg_name (large)"
+              fi
+
+              # Ensure package is in main index
+              if ! grep -q "href=\"$pkg_name/\"" simple/index.html; then
+                sed -i "s|</body>|<a href=\"$pkg_name/\">$pkg_name</a><br/>\n</body>|" simple/index.html
+              fi
+            done
+
+            echo "✅ Large wheels added to index"
+          else
+            echo "No large wheels to add"
+          fi
+
+          # Step 3: Move small wheels to packages directory for GitHub Pages
+          echo ""
+          echo "Step 3: Organizing directories..."
           rm -rf packages
           mv packages-small packages
           rm -rf packages-large
 
           echo "✅ PyPI index structure created"
-          tree -L 2 || find . -type d
+          echo ""
+          echo "Index summary:"
+          echo "  Total packages: $(ls -1 simple/ | grep -v index.html | wc -l)"
+          echo "  Total wheels: $(ls -1 packages/*.whl 2>/dev/null | wc -l)"
+          echo ""
+          echo "Directory structure:"
+          tree -L 2 simple/ || find simple/ -type d
+
+      - name: Verify PyPI index completeness
+        run: |
+          cd pypi-repo
+
+          echo "Verifying PyPI index completeness..."
+          echo ""
+
+          # Critical packages that MUST be in the index
+          CRITICAL_PACKAGES=(
+            "vllm"
+            "regex"
+            "numpy"
+            "transformers"
+            "tokenizers"
+            "torch"
+            "triton"
+            "protobuf"
+            "pydantic"
+            "aiohttp"
+            "requests"
+            "fastapi"
+            "typing-extensions"
+            "packaging"
+          )
+
+          MISSING_PACKAGES=()
+
+          for pkg in "${CRITICAL_PACKAGES[@]}"; do
+            # Normalize package name (convert to lowercase with hyphens)
+            normalized_pkg=$(echo "$pkg" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+
+            if [ -d "simple/$normalized_pkg" ] && [ -f "simple/$normalized_pkg/index.html" ]; then
+              wheel_count=$(grep -c "<a href=" "simple/$normalized_pkg/index.html" || echo 0)
+              echo "✅ $pkg ($normalized_pkg): $wheel_count wheels"
+            else
+              echo "❌ $pkg ($normalized_pkg): NOT FOUND"
+              MISSING_PACKAGES+=("$pkg")
+            fi
+          done
+
+          echo ""
+
+          if [ ${#MISSING_PACKAGES[@]} -gt 0 ]; then
+            echo "ERROR: Missing critical packages in PyPI index!"
+            echo "Missing packages:"
+            for pkg in "${MISSING_PACKAGES[@]}"; do
+              echo "  - $pkg"
+            done
+            echo ""
+            echo "Available packages in index:"
+            ls -1 simple/ | grep -v index.html | sort
+            echo ""
+            echo "This will cause pip install failures!"
+            exit 1
+          fi
+
+          echo "✅ All critical packages present in index"
+          echo ""
+          echo "Sample package indices:"
+          for pkg in regex numpy vllm; do
+            normalized_pkg=$(echo "$pkg" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+            if [ -f "simple/$normalized_pkg/index.html" ]; then
+              echo ""
+              echo "--- simple/$normalized_pkg/index.html ---"
+              head -15 "simple/$normalized_pkg/index.html"
+            fi
+          done
+
       - name: Create landing page
         run: |
           cd pypi-repo
