@@ -378,7 +378,7 @@ jobs:
               wheel_name=$(basename "$wheel")
 
               # Use Python to properly extract package name (more robust than sed)
-              pkg_name=$(python3 .github/scripts/extract_package_name.py "$wheel_name")
+              pkg_name=$(python3 ../.github/scripts/extract_package_name.py "$wheel_name")
 
               mkdir -p "simple/$pkg_name"
 
