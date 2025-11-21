@@ -80,14 +80,14 @@ total_wheel_size = sum(w.stat().st_size for w in all_wheels)
 stat = shutil.disk_usage(".")
 free_gb = stat.free / (1024**3)
 
-# With move+symlink approach, we only need ~1.1x the wheel size
-# (not 1.5x or 2x, since we're moving not copying)
-needed_gb = total_wheel_size / (1024**3) * 1.1  # 1.1x for filesystem overhead
+# With copy approach, we need 2x the wheel size for small wheels
+# (packages/ + packages-small/ both contain actual files)
+needed_gb = total_wheel_size / (1024**3) * 2.0  # 2x for dual storage
 
 print(f"\nDisk Space Check:")
 print(f"  Total wheel size: {total_wheel_size/(1024**3):.2f} GB")
 print(f"  Available space: {free_gb:.2f} GB")
-print(f"  Estimated needed: {needed_gb:.2f} GB (using move+symlink)")
+print(f"  Estimated needed: {needed_gb:.2f} GB (using copy for dumb-pypi compatibility)")
 
 if free_gb < needed_gb:
     print(f"\nERROR: Insufficient disk space!", file=sys.stderr)
@@ -122,22 +122,21 @@ for i, wheel in enumerate(all_wheels, 1):
             large_total_size += size
             operation = "moved -> packages-large/"
         else:
-            # Small wheels: MOVE to packages/, SYMLINK in packages-small/
-            # This uses only 1× space instead of 2×
+            # Small wheels: MOVE to packages/, COPY to packages-small/
+            # Using actual files (not symlinks) for dumb-pypi compatibility
             primary_dest = packages_dir / wheel.name
-            symlink_dest = small_dir / wheel.name
+            small_dest = small_dir / wheel.name
 
             # Move to primary location (packages/)
             shutil.move(str(wheel), str(primary_dest))
 
-            # Create relative symlink in packages-small/
-            # Use relative path so symlink works regardless of absolute paths
-            relative_path = os.path.relpath(primary_dest, small_dir)
-            os.symlink(relative_path, symlink_dest)
+            # Copy to packages-small/ for dumb-pypi indexing
+            # dumb-pypi cannot process symlinks, needs actual files
+            shutil.copy2(str(primary_dest), str(small_dest))
 
             small_count += 1
             small_total_size += size
-            operation = "moved -> packages/ + symlinked -> packages-small/"
+            operation = "moved -> packages/ + copied -> packages-small/"
 
         # Enhanced progress indicator
         current_time = time.time()
@@ -187,9 +186,9 @@ print(f"  Large wheels (>100MB): {large_count} -> GitHub Releases ({large_total_
 print(f"  Small wheels (<100MB): {small_count} -> GitHub Pages ({small_total_size/(1024**2):.1f} MB)")
 print(f"Total processing time: {total_time:.1f} seconds")
 print(f"Average rate: {total/total_time:.2f} wheels/second")
-print(f"\nDisk space optimization: Using move+symlink approach")
-print(f"  Actual space used: ~{total_wheel_size/(1024**3):.2f} GB (not {total_wheel_size*2/(1024**3):.2f} GB)")
-print(f"  Space saved: ~{total_wheel_size/(1024**3):.2f} GB")
+print(f"\nDisk space usage: Using copy approach for dumb-pypi compatibility")
+print(f"  Actual space used: ~{total_wheel_size*2/(1024**3):.2f} GB")
+print(f"  Small wheels are in both packages/ and packages-small/ (actual files, not symlinks)")
 print(f"{'='*70}\n")
 
 # List examples
@@ -204,14 +203,8 @@ small_sample = list(small_dir.glob("*.whl"))[:5]
 if small_sample:
     print(f"\nSmall wheels sample (showing 5 of {small_count}):")
     for w in small_sample:
-        # Check if symlink
-        if w.is_symlink():
-            target = os.readlink(w)
-            size_mb = w.stat().st_size / (1024*1024)
-            print(f"  - {w.name} ({size_mb:.1f} MB) [symlink -> {target}]")
-        else:
-            size_mb = w.stat().st_size / (1024*1024)
-            print(f"  - {w.name} ({size_mb:.1f} MB)")
+        size_mb = w.stat().st_size / (1024*1024)
+        print(f"  - {w.name} ({size_mb:.1f} MB)")
 
 # Set output for next steps
 release_tag = f"wheels-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
