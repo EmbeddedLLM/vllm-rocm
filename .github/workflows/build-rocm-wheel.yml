@@ -353,9 +353,13 @@ jobs:
 
           # Step 1: Use dumb-pypi to generate base index for small wheels
           # This creates proper PEP 503 compliant structure
-          echo "Step 1: Running dumb-pypi for small wheels..."
+          echo "Step 1: Generating package list for dumb-pypi..."
+          ls -1 packages-small/*.whl | xargs -n1 basename > packages-small-list.txt
+          echo "Package list created with $(wc -l < packages-small-list.txt) packages"
+
+          echo "Running dumb-pypi for small wheels..."
           dumb-pypi \
-            --package-list packages-small \
+            --package-list packages-small-list.txt \
             --packages-url "$PAGES_URL/packages" \
             --output-dir simple
 
